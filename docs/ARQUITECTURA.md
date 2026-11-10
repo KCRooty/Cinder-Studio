@@ -65,8 +65,9 @@ archivo → FFmpeg (decodificación, por hardware si la hay)
 
 ## Formato de proyecto `.cinder`
 
-- Carpeta con un archivo principal en texto (RON o JSON, se decide en la Fase 1), los
-  grafos de nodos y una subcarpeta de caché que se puede borrar sin perder nada.
+- Carpeta con un archivo principal en JSON (`proyecto.json`; JSON y no RON porque lo lee
+  cualquier herramienta), los grafos de nodos y una subcarpeta de caché que se puede borrar
+  sin perder nada.
 - Campo `version` desde el primer commit; cada cambio de formato trae su migración.
 - Las rutas a los medios se guardan relativas al proyecto cuando es posible, para mover
   proyectos entre equipos.
