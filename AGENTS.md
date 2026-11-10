@@ -28,7 +28,7 @@ de trabajo de DaVinci Resolve con código propio, y lo mejora.
 | Replicar 1:1 (memoria muscular del usuario) | Mejorar libremente |
 |---|---|
 | Las siete páginas, su orden y la barra inferior para cambiar de una a otra | Todo el procesado de imagen en GPU (wgpu), con cualquier fabricante de tarjeta |
-| Atajos de edición: J/K/L, I/O, A selección, B cuchilla, T recorte, F9–F12 | Arranque rápido, sin cuenta ni activación, funciona sin conexión |
+| Atajos de edición: J/K/L, I/O, A selección, B cuchilla, T recorte, F9–F12; Mayús+2 … Mayús+8 para cambiar de página | Arranque rápido, sin cuenta ni activación, funciona sin conexión |
 | Recortes ripple, roll, slip y slide con la misma lógica | En Linux, H.264/H.265 y AAC funcionan igual que en Windows (vía FFmpeg) |
 | Grafo de nodos de color: serie, paralelo, capa (Alt+S, Alt+P, Alt+L) | Formato de proyecto abierto y versionado, legible por otras herramientas |
 | Ruedas primarias (lift/gamma/gain/offset), curvas, cualificadores, ventanas | Plugins aislados para que uno roto no tumbe el programa |
