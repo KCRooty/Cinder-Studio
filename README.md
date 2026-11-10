@@ -14,7 +14,22 @@ Sustituye a CoalMix Studio (DAW, cancelado el 2026-11-10).
 **Antes de tocar nada:** lee [`AGENTS.md`](AGENTS.md) (reglas clean-room, no
 negociables).
 
-Estado (2026-11-10): fase de diseño. Sin código todavía.
+Estado (2026-11-10): Fase 1 en curso. Ya hay ventana (egui sobre wgpu) con las siete
+páginas y su barra inferior, y el modelo de proyecto con deshacer/rehacer y guardado en
+`.cinder`. Todavía no abre ni reproduce vídeo. Qué se probó, en [`CHANGELOG.md`](CHANGELOG.md).
+
+![La ventana de Cinder Studio en la página Color](docs/screenshots/01-shell-color.png)
+
+## Compilar
+
+```
+cargo run -p cinder                 # abre Cinder Studio
+cargo test --workspace              # tests
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Hace falta Rust estable (1.85 o más nuevo) y una tarjeta con Vulkan, DirectX 12 o Metal.
+En Linux, además, las librerías de ejecución de X11 o Wayland que trae cualquier escritorio.
 
 ## Documentación
 
@@ -35,7 +50,10 @@ El mismo orden y la misma idea que en Resolve: el proyecto avanza de izquierda a
 derecha por la barra inferior, y cada página es una herramienta completa sobre la
 misma línea de tiempo. Detalle en [`docs/PAGINAS.md`](docs/PAGINAS.md).
 
-## Estructura prevista
+## Estructura
+
+Hoy existen `crates/cinder-core` y `apps/cinder`; el resto de crates se crea cuando su fase
+empieza.
 
 ```
 crates/

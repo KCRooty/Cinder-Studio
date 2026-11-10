@@ -3,18 +3,19 @@
 Cada fase termina con algo que se puede usar y probar. Las fechas se ponen al empezar
 cada fase, no antes.
 
-## Fase 0 · Diseño — *en curso*
+## Fase 0 · Diseño — *hecha*
 
 - Este repo: reglas, páginas, arquitectura y roadmap.
-- Decidir el formato del archivo principal de `.cinder` (RON o JSON).
+- Formato del archivo principal de `.cinder`: JSON (decidido el 2026-11-10).
 
-## Fase 1 · Cimientos
+## Fase 1 · Cimientos — *en curso*
 
-- Workspace de Cargo con los crates de `README.md`.
-- Ventana con egui sobre wgpu, en Windows y Linux.
+- ✔ Workspace de Cargo (`cinder-core` y la app; el resto de crates, cuando toque).
+- ✔ Ventana con egui sobre wgpu, con las siete páginas y Mayús+2 … Mayús+8.
 - Abrir un clip, decodificarlo con FFmpeg y reproducirlo en el visor con el audio
   sincronizado.
-- CI que compila y pasa los tests en Windows y Linux.
+- ✔ CI que compila y pasa los tests en Windows y Linux.
+- ✔ Modelo de proyecto, deshacer/rehacer y guardado en `.cinder` (adelantado de la Fase 2).
 
 ## Fase 2 · Medios y Edición
 
