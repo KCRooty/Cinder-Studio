@@ -2,7 +2,7 @@
 
 # Cinder Studio
 
-**Página del proyecto:** [staticforge.me](https://staticforge.me/#proyectos)
+**Página del proyecto:** [staticforge.me/cinder](https://staticforge.me/cinder/)
 
 Editor de vídeo open source (Static Forge) que replica el flujo de trabajo de
 DaVinci Resolve — edición, color, composición nodal, audio y entrega en un solo
