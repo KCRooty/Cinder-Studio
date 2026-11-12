@@ -2,6 +2,11 @@
 
 Qué cambia en cada paso y qué se ha probado. Lo más reciente, arriba.
 
+## 2026-11-12 — Logo nuevo y página del proyecto
+
+- Logo nuevo (`assets/logo.png`): cámara de cine violeta sobre cielo estrellado.
+- Página del proyecto en [staticforge.me/cinder](https://staticforge.me/cinder/).
+
 ## 2026-11-10 — Fase 1: cimientos
 
 - Workspace de Cargo: `crates/cinder-core` y `apps/cinder` (binario `cinder-studio`).
