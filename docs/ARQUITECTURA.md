@@ -41,6 +41,10 @@ archivo → FFmpeg (decodificación, por hardware si la hay)
         → visor  |  codificador (Entrega)
 ```
 
+- **Hoy (Fase 1):** el visor recibe RGBA de 8 bits convertido en CPU con `swscale` (como
+  máximo 1920 de ancho) y lo sube como textura de egui. Es provisional: la subida de los
+  planos YUV y la conversión en GPU llegan con el grafo de imagen (Fase 4); el render final
+  nunca pasará por este atajo.
 - Cada nodo de color y de composición es un shader WGSL con sus parámetros; el grafo se
   compila a una lista de pasadas y solo se recalcula lo que cambia.
 - Caché de fotogramas en dos niveles: fotogramas decodificados (CPU) y resultados
