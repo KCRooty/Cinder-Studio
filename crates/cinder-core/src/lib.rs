@@ -9,5 +9,5 @@ pub mod project;
 pub mod timeline;
 
 pub use history::{Edit, History};
-pub use project::{FORMAT_VERSION, MediaItem, Project, ProjectError, ProjectSettings};
+pub use project::{Bin, FORMAT_VERSION, MediaItem, Project, ProjectError, ProjectSettings};
 pub use timeline::{Clip, ClipId, EditError, Frames, MediaId, Rational, Timeline, Track, TrackKind};

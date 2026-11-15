@@ -6,6 +6,8 @@ pub enum MediaError {
     Open { path: String, reason: String },
     #[error("el archivo no tiene vídeo")]
     NoVideo,
+    #[error("el archivo no tiene audio")]
+    NoAudio,
     #[error("FFmpeg: {0}")]
     Ffmpeg(String),
     #[error("audio: {0}")]
