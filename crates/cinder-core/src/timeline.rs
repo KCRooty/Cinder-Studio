@@ -74,6 +74,14 @@ pub enum EditError {
     NegativeStart,
     #[error("el clip se solaparía con otro de la misma pista")]
     Overlap,
+    #[error("no hay ningún clip en ese punto")]
+    NothingThere,
+    #[error("el recorte se sale del medio de origen")]
+    OutOfSource,
+    #[error("no existe el medio {0:?}")]
+    NoSuchMedia(MediaId),
+    #[error("los dos clips no están pegados")]
+    NotAdjacent,
 }
 
 impl Track {
@@ -115,6 +123,25 @@ impl Track {
     pub fn remove(&mut self, id: ClipId) -> Result<Clip, EditError> {
         let at = self.clips.iter().position(|c| c.id == id).ok_or(EditError::NoSuchClip(id))?;
         Ok(self.clips.remove(at))
+    }
+
+    /// Sustituye el clip con el mismo id y devuelve el que había.
+    pub fn replace(&mut self, clip: Clip) -> Result<Clip, EditError> {
+        if self.clip(clip.id).is_none() {
+            return Err(EditError::NoSuchClip(clip.id));
+        }
+        self.check_free(clip.start, clip.duration, Some(clip.id))?;
+        if clip.source_in < 0 {
+            return Err(EditError::OutOfSource);
+        }
+        let old = self.remove(clip.id)?;
+        self.insert(clip)?;
+        Ok(old)
+    }
+
+    /// El clip que ocupa el fotograma `at`, si hay alguno.
+    pub fn clip_at(&self, at: Frames) -> Option<&Clip> {
+        self.clips.iter().find(|c| c.start <= at && at < c.end())
     }
 
     /// Mueve un clip y devuelve dónde estaba.

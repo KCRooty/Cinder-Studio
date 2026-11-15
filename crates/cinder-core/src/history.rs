@@ -5,9 +5,26 @@ use crate::timeline::{Clip, ClipId, EditError, Frames, Timeline};
 /// Un cambio reversible en la línea de tiempo. Aplicarlo devuelve el cambio que lo deshace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Edit {
-    AddClip { track: usize, clip: Clip },
-    RemoveClip { track: usize, id: ClipId },
-    MoveClip { track: usize, id: ClipId, to: Frames },
+    AddClip {
+        track: usize,
+        clip: Clip,
+    },
+    RemoveClip {
+        track: usize,
+        id: ClipId,
+    },
+    MoveClip {
+        track: usize,
+        id: ClipId,
+        to: Frames,
+    },
+    /// Cambia un clip ya colocado (posición, entrada o duración) por otra versión con el mismo id.
+    SetClip {
+        track: usize,
+        clip: Clip,
+    },
+    /// Varios cambios como uno solo: se aplican en orden y, si uno falla, se deshacen los anteriores.
+    Batch(Vec<Edit>),
 }
 
 impl Edit {
@@ -25,6 +42,27 @@ impl Edit {
             Edit::MoveClip { track, id, to } => {
                 let from = timeline.track_mut(track)?.move_clip(id, to)?;
                 Ok(Edit::MoveClip { track, id, to: from })
+            }
+            Edit::SetClip { track, clip } => {
+                let old = timeline.track_mut(track)?.replace(clip)?;
+                Ok(Edit::SetClip { track, clip: old })
+            }
+            Edit::Batch(edits) => {
+                let mut inverses = Vec::with_capacity(edits.len());
+                for edit in edits {
+                    match edit.apply(timeline) {
+                        Ok(inverse) => inverses.push(inverse),
+                        Err(e) => {
+                            // Volver atrás lo ya aplicado: la línea de tiempo queda como estaba.
+                            for inverse in inverses.into_iter().rev() {
+                                inverse.apply(timeline).ok();
+                            }
+                            return Err(e);
+                        }
+                    }
+                }
+                inverses.reverse();
+                Ok(Edit::Batch(inverses))
             }
         }
     }
