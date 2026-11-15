@@ -17,12 +17,13 @@ cada fase, no antes.
 - ✔ CI que compila y pasa los tests en Windows y Linux.
 - ✔ Modelo de proyecto, deshacer/rehacer y guardado en `.cinder` (adelantado de la Fase 2).
 
-## Fase 2 · Medios y Edición
+## Fase 2 · Medios y Edición — *en curso*
 
-- Página **Medios**: importar, bins, metadatos, visor con entrada y salida.
-- Página **Edición**: línea de tiempo multipista, J/K/L, I/O, selección, cuchilla,
-  recortes ripple/roll/slip/slide, inserción y sobrescritura.
-- Formato `.cinder` versionado; deshacer y rehacer.
+- Página **Medios**: ✔ importar, ✔ metadatos, ✔ visor con entrada y salida; bins.
+- Página **Edición**: ✔ línea de tiempo multipista, ✔ J/K/L, ✔ I/O, ✔ selección, ✔ cuchilla,
+  ✔ recortes ripple/roll/slip/slide, ✔ inserción y sobrescritura; sonido del programa
+  (mezcla de las pistas de audio), enlace explícito de vídeo y audio, añadir y quitar pistas.
+- ✔ Formato `.cinder` versionado; ✔ deshacer y rehacer.
 
 ## Fase 3 · Entrega — *fin del MVP*
 
