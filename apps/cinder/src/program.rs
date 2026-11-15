@@ -1,54 +1,84 @@
-//! Visor de programa: enseña la línea de tiempo en el cabezal y la reproduce.
+//! Visor de programa: enseña la línea de tiempo en el cabezal y la reproduce con su sonido.
 //!
-//! Se ve el clip de la pista de vídeo más alta que haya en el cabezal; en un hueco, negro. Cada
-//! medio tiene su reproductor (se abren al hacer falta y se quedan abiertos); al pasar de un
-//! clip al siguiente se salta en el nuevo reproductor y se para el anterior.
-//!
-//! En esta etapa el programa suena mudo: la mezcla de las pistas de audio llega en el siguiente
-//! paso de la Fase 2. El visor de origen sí suena.
+//! El reloj es el del mezclador de audio ([`cinder_media::Mixer`]): el cabezal va donde diga
+//! el sonido. Imagen: el clip de la pista de vídeo visible más alta; cada medio tiene su
+//! reproductor mudo, que se coloca al entrar en cada clip y se recoloca si se desvía. Sonido:
+//! cada clip de las pistas de audio sin silenciar se programa en el mezclador un poco antes de
+//! que le toque, en su muestra exacta.
 
 use std::collections::HashMap;
 use std::time::Instant;
 
-use cinder_core::{Clip, Frames, MediaId, Project, TrackKind};
-use cinder_media::Player;
-use eframe::egui::{self, Color32, TextureHandle, Vec2};
+use cinder_core::{Clip, ClipId, Frames, MediaId, Project, TrackKind};
+use cinder_media::{AudioClipHandle, Mixer, Player};
+use eframe::egui::{self, TextureHandle};
 
 use crate::media_pool::frames_to_secs;
-use crate::viewer::{draw_picture, play_button, timecode, upload};
+use crate::monitor::{self, MonitorInput, timecode};
+use crate::theme;
+
+/// Con cuánta antelación (en segundos) se programa el audio de un clip.
+const LOOKAHEAD: f64 = 1.0;
+/// Desvío entre la imagen y el reloj a partir del cual se recoloca el reproductor.
+const MAX_DRIFT: f64 = 0.08;
 
 pub struct Program {
+    mixer: Mixer,
     players: HashMap<MediaId, Player>,
     errors: HashMap<MediaId, String>,
+    /// Clips de audio ya programados, con el fotograma en que acaban.
+    voices: HashMap<ClipId, (Frames, AudioClipHandle)>,
     texture: Option<TextureHandle>,
     shown: Option<(MediaId, f64)>,
     pub playhead: Frames,
     playing: bool,
-    /// Clip que suena ahora (id y medio) y desde qué fotograma se cuenta en un hueco.
+    /// Segundo de la línea de tiempo y valor del reloj del mezclador al empezar a reproducir.
+    base_secs: f64,
+    base_clock: u64,
+    /// Clip que se está viendo.
     current: Option<Clip>,
-    gap_from: Option<(Instant, Frames)>,
-    /// El cabezal cambió desde fuera (clic en la regla, flechas): hay que saltar.
+    last_resync: Option<Instant>,
+    /// El cabezal o la línea de tiempo cambiaron desde fuera: hay que recolocar la imagen.
     dirty: bool,
 }
 
-/// El clip visible en `at`: el de la pista de vídeo más alta.
+/// El clip visible en `at`: el de la pista de vídeo sin ocultar más alta.
 fn top_clip(project: &Project, at: Frames) -> Option<Clip> {
-    project.timeline.tracks.iter().rev().filter(|t| t.kind == TrackKind::Video).find_map(|t| t.clip_at(at).cloned())
+    project
+        .timeline
+        .tracks
+        .iter()
+        .rev()
+        .filter(|t| t.kind == TrackKind::Video && !t.muted)
+        .find_map(|t| t.clip_at(at).cloned())
 }
 
 impl Program {
     pub fn new() -> Self {
         Self {
+            mixer: Mixer::new(),
             players: HashMap::new(),
             errors: HashMap::new(),
+            voices: HashMap::new(),
             texture: None,
             shown: None,
             playhead: 0,
             playing: false,
+            base_secs: 0.0,
+            base_clock: 0,
             current: None,
-            gap_from: None,
+            last_resync: None,
             dirty: true,
         }
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.playing
+    }
+
+    /// El mezclador de la aplicación: el visor de origen también suena por él.
+    pub fn mixer(&mut self) -> &mut Mixer {
+        &mut self.mixer
     }
 
     /// Mueve el cabezal (y para la reproducción, como al hacer clic en la regla).
@@ -58,9 +88,11 @@ impl Program {
         self.dirty = true;
     }
 
-    /// La línea de tiempo cambió: lo que hay en el cabezal puede ser otro clip.
+    /// La línea de tiempo cambió: lo que hay en el cabezal puede ser otro clip y el audio
+    /// programado ya no vale.
     pub fn invalidate(&mut self) {
         self.dirty = true;
+        self.voices.clear();
     }
 
     pub fn play(&mut self, project: &Project) {
@@ -71,13 +103,19 @@ impl Program {
             self.playhead = 0;
         }
         self.playing = true;
-        self.current = None;
-        self.gap_from = None;
+        self.base_secs = frames_to_secs(self.playhead, project.settings.fps);
+        self.base_clock = self.mixer.clock();
+        self.voices.clear();
+        self.dirty = true;
+        self.mixer.set_playing(true);
     }
 
     pub fn pause(&mut self) {
-        self.playing = false;
-        self.gap_from = None;
+        // Solo para el mezclador si era el programa el que sonaba (puede ser el visor de origen).
+        if std::mem::take(&mut self.playing) {
+            self.mixer.set_playing(false);
+        }
+        self.voices.clear();
         for p in self.players.values_mut() {
             p.pause();
         }
@@ -87,7 +125,9 @@ impl Program {
         if self.playing { self.pause() } else { self.play(project) }
     }
 
+    /// Se abrió otro proyecto: fuera reproductores y texturas.
     pub fn forget_media(&mut self) {
+        self.pause();
         self.players.clear();
         self.errors.clear();
         self.texture = None;
@@ -111,25 +151,27 @@ impl Program {
         self.players.get_mut(&media)
     }
 
-    /// Segundo del medio que corresponde al fotograma `at` dentro del clip.
-    fn source_secs(project: &Project, clip: &Clip, at: Frames) -> f64 {
-        frames_to_secs(clip.source_in + (at - clip.start), project.settings.fps)
+    /// Segundo de la línea de tiempo según el reloj del mezclador.
+    fn now_secs(&self) -> f64 {
+        let elapsed = self.mixer.clock().saturating_sub(self.base_clock);
+        self.base_secs + elapsed as f64 / f64::from(self.mixer.rate().max(1))
     }
 
-    /// Pone el reproductor del clip en el punto del cabezal (y en marcha si se está reproduciendo).
-    fn enter(&mut self, project: &Project, clip: Option<Clip>) {
+    /// Coloca el reproductor del clip en el segundo `secs` de la línea de tiempo.
+    fn enter(&mut self, project: &Project, clip: Option<Clip>, secs: f64) {
         if let Some(old) = self.current.take()
             && let Some(p) = self.players.get_mut(&old.media)
         {
             p.pause();
         }
-        self.gap_from = None;
+        self.last_resync = Some(Instant::now());
         match clip {
             Some(c) => {
-                let secs = Self::source_secs(project, &c, self.playhead);
+                let fps = project.settings.fps;
+                let source = frames_to_secs(c.source_in, fps) + (secs - frames_to_secs(c.start, fps)).max(0.0);
                 let playing = self.playing;
                 if let Some(p) = self.player(project, c.media) {
-                    p.seek(secs);
+                    p.seek(source);
                     if playing {
                         p.play();
                     }
@@ -137,11 +179,37 @@ impl Program {
                 self.current = Some(c);
             }
             None => {
-                if self.playing {
-                    self.gap_from = Some((Instant::now(), self.playhead));
-                }
                 self.texture = None;
                 self.shown = None;
+            }
+        }
+    }
+
+    /// Programa en el mezclador los clips de audio que suenan ahora o están a punto.
+    fn schedule_audio(&mut self, project: &Project, now: f64) {
+        self.mixer.reap();
+        if !self.mixer.has_output() {
+            return;
+        }
+        let fps = project.settings.fps;
+        let rate = f64::from(self.mixer.rate());
+        let playhead = self.playhead;
+        self.voices.retain(|_, (end, _)| *end + fps.as_f64() as Frames / 4 > playhead);
+        for track in project.timeline.tracks.iter().filter(|t| t.kind == TrackKind::Audio && !t.muted) {
+            for c in track.clips() {
+                let (start, end) = (frames_to_secs(c.start, fps), frames_to_secs(c.end(), fps));
+                if end <= now || start > now + LOOKAHEAD || self.voices.contains_key(&c.id) {
+                    continue;
+                }
+                let Some(item) = project.media.iter().find(|m| m.id == c.media) else { continue };
+                // Si el clip ya había empezado, entra por donde va; si no, desde su principio.
+                let from = start.max(now);
+                let source = frames_to_secs(c.source_in, fps) + (from - start);
+                let frames = ((end - from) * rate) as u64;
+                let at_clock = self.base_clock + ((from - self.base_secs).max(0.0) * rate) as u64;
+                if let Some(handle) = self.mixer.add_clip(&item.path, source, frames, at_clock, 1.0) {
+                    self.voices.insert(c.id, (c.end(), handle));
+                }
             }
         }
     }
@@ -150,36 +218,36 @@ impl Program {
     pub fn update(&mut self, ctx: &egui::Context, project: &Project) {
         let fps = project.settings.fps;
         let end = project.timeline.duration();
-        if self.dirty {
-            self.dirty = false;
-            let clip = top_clip(project, self.playhead);
-            self.enter(project, clip);
-        }
+        let mut now = frames_to_secs(self.playhead, fps);
         if self.playing {
-            let next = match (&self.current, self.gap_from) {
-                (Some(c), _) => {
-                    let pos = self.players.get(&c.media).map(Player::position);
-                    match pos {
-                        Some(secs) => (secs * fps.as_f64()).round() as Frames - c.source_in + c.start,
-                        None => c.end(),
-                    }
-                }
-                (None, Some((since, from))) => from + (since.elapsed().as_secs_f64() * fps.as_f64()) as Frames,
-                (None, None) => self.playhead,
-            };
-            self.playhead = next.max(self.playhead);
+            now = self.now_secs();
+            self.playhead = (now * fps.as_f64()).floor() as Frames;
             if self.playhead >= end {
                 self.playhead = end;
                 self.pause();
-            } else {
-                // ¿Cambió lo que hay debajo del cabezal? (fin de clip, empieza otro, se acaba un hueco)
-                let below = top_clip(project, self.playhead);
-                if below.as_ref().map(|c| c.id) != self.current.as_ref().map(|c| c.id) {
-                    self.enter(project, below);
+            }
+        }
+        let below = top_clip(project, self.playhead);
+        if self.dirty || below.as_ref().map(|c| c.id) != self.current.as_ref().map(|c| c.id) {
+            self.dirty = false;
+            self.enter(project, below, now);
+        }
+        if self.playing {
+            self.schedule_audio(project, now);
+            // El reproductor lleva su propio reloj: si se separa del sonido, se recoloca.
+            if let Some(c) = &self.current
+                && let Some(p) = self.players.get_mut(&c.media)
+            {
+                let want = frames_to_secs(c.source_in, fps) + (now - frames_to_secs(c.start, fps));
+                let settled = self.last_resync.is_none_or(|t| t.elapsed().as_secs_f64() > 0.5);
+                if settled && (p.position() - want).abs() > MAX_DRIFT {
+                    p.seek(want);
+                    self.last_resync = Some(Instant::now());
                 }
             }
             ctx.request_repaint();
         } else {
+            self.mixer.reap();
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
         if let Some(c) = self.current.clone()
@@ -187,33 +255,58 @@ impl Program {
             && let Some(frame) = p.frame()
             && self.shown != Some((c.media, frame.pts))
         {
-            upload(ctx, &mut self.texture, "visor-programa", frame);
+            monitor::upload(ctx, &mut self.texture, "visor-programa", frame);
             self.shown = Some((c.media, frame.pts));
         }
     }
 
-    /// Devuelve `true` si se hizo clic en la imagen.
-    pub fn ui(&mut self, ui: &mut egui::Ui, project: &Project) -> bool {
+    /// Devuelve `true` si se tocó el visor.
+    pub fn ui(&mut self, ui: &mut egui::Ui, project: &Project, active: bool) -> bool {
         self.update(ui.ctx(), project);
         let fps = project.settings.fps.as_f64();
-        let area = ui.available_size() - Vec2::new(0.0, 40.0);
-        let clicked = draw_picture(ui, self.texture.as_ref(), area).clicked();
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            if play_button(ui, self.playing).on_hover_text("Espacio · K / L").clicked() {
-                self.toggle(project);
-            }
-            ui.monospace(timecode(self.playhead as f64 / fps, fps));
-            ui.weak("/");
-            ui.monospace(timecode(project.timeline.duration() as f64 / fps, fps));
-            ui.weak("Programa (sin sonido todavía)");
-            if let Some(c) = &self.current
-                && let Some(e) = self.errors.get(&c.media)
-            {
-                ui.colored_label(Color32::from_rgb(0xF0, 0x7F, 0x7F), e);
-            }
-        });
-        clicked
+        let end = project.timeline.duration();
+        let error = self.current.as_ref().and_then(|c| self.errors.get(&c.media)).cloned();
+        let note = match (&error, self.mixer.error()) {
+            (Some(e), _) => Some((e.as_str(), theme::ERROR)),
+            (None, Some(_)) => Some(("sin tarjeta de sonido", theme::WARN)),
+            _ => None,
+        };
+        let out = monitor::show(
+            ui,
+            MonitorInput {
+                kind: "Programa",
+                title: &project.name,
+                timecode: timecode(self.playhead as f64 / fps, fps),
+                duration: timecode(end as f64 / fps, fps),
+                texture: self.texture.as_ref(),
+                playing: self.playing,
+                position: if end > 0 { self.playhead as f64 / end as f64 } else { 0.0 },
+                marks: None,
+                active,
+                with_marks: false,
+                empty: (end == 0).then_some("La línea de tiempo está vacía"),
+                note,
+            },
+        );
+        if out.toggle {
+            self.toggle(project);
+        }
+        if out.to_start {
+            self.seek(0);
+        }
+        if out.to_end {
+            self.seek(end);
+        }
+        if out.step_back {
+            self.seek(self.playhead - 1);
+        }
+        if out.step_fwd {
+            self.seek(self.playhead + 1);
+        }
+        if let Some(t) = out.scrub {
+            self.seek((t * end as f64).round() as Frames);
+        }
+        out.clicked
     }
 
     /// Atajos del visor de programa, con él activo.
@@ -221,44 +314,30 @@ impl Program {
         if ctx.egui_wants_keyboard_input() {
             return;
         }
-        let (space, k, l, j, left, right, home, end) = ctx.input(|i| {
-            if i.modifiers.any() {
-                return Default::default();
-            }
-            (
-                i.key_pressed(egui::Key::Space),
-                i.key_pressed(egui::Key::K),
-                i.key_pressed(egui::Key::L),
-                i.key_pressed(egui::Key::J),
-                i.key_pressed(egui::Key::ArrowLeft),
-                i.key_pressed(egui::Key::ArrowRight),
-                i.key_pressed(egui::Key::Home),
-                i.key_pressed(egui::Key::End),
-            )
-        });
-        let fps = project.settings.fps.as_f64().round() as Frames;
-        if space {
+        let key = |k: egui::Key| ctx.input(|i| !i.modifiers.any() && i.key_pressed(k));
+        let second = project.settings.fps.as_f64().round() as Frames;
+        if key(egui::Key::Space) {
             self.toggle(project);
         }
-        if k {
+        if key(egui::Key::K) {
             self.pause();
         }
-        if l {
+        if key(egui::Key::L) {
             self.play(project);
         }
-        if j {
-            self.seek(self.playhead - fps);
+        if key(egui::Key::J) {
+            self.seek(self.playhead - second);
         }
-        if left {
+        if key(egui::Key::ArrowLeft) {
             self.seek(self.playhead - 1);
         }
-        if right {
+        if key(egui::Key::ArrowRight) {
             self.seek(self.playhead + 1);
         }
-        if home {
+        if key(egui::Key::Home) {
             self.seek(0);
         }
-        if end {
+        if key(egui::Key::End) {
             self.seek(project.timeline.duration());
         }
     }

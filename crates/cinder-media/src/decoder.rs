@@ -250,7 +250,7 @@ impl DecoderThread {
                 continue;
             }
             out.clear();
-            if resample(a, &decoded, &mut out).is_err() {
+            if resample_into(&mut a.resampler, a.sink.rate, &decoded, &mut out).is_err() {
                 continue;
             }
             // Recorte fino: quitar las muestras anteriores al punto de salto.
@@ -295,25 +295,24 @@ fn poll(commands: &Receiver<Command>) -> Flow {
     }
 }
 
-/// Convierte un fotograma de audio a f32 estéreo intercalado a la frecuencia de salida.
-fn resample(a: &mut AudioPart, input: &ff::frame::Audio, out: &mut Vec<f32>) -> Result<(), ff::Error> {
+/// Convierte un fotograma de audio a f32 estéreo intercalado a la frecuencia `rate`.
+pub(crate) fn resample_into(
+    resampler: &mut Option<resampling::Context>,
+    rate: u32,
+    input: &ff::frame::Audio,
+    out: &mut Vec<f32>,
+) -> Result<(), ff::Error> {
     let target = Sample::F32(SampleType::Packed);
     let layout = if input.channel_layout().channels() > 0 {
         input.channel_layout()
     } else {
         ChannelLayout::default(i32::from(input.channels().max(1)))
     };
-    if a.resampler.is_none() {
-        a.resampler = Some(resampling::Context::get(
-            input.format(),
-            layout,
-            input.rate(),
-            target,
-            ChannelLayout::STEREO,
-            a.sink.rate,
-        )?);
+    if resampler.is_none() {
+        *resampler =
+            Some(resampling::Context::get(input.format(), layout, input.rate(), target, ChannelLayout::STEREO, rate)?);
     }
-    let Some(resampler) = a.resampler.as_mut() else { return Ok(()) };
+    let Some(resampler) = resampler.as_mut() else { return Ok(()) };
     let mut converted = ff::frame::Audio::empty();
     let mut delay = resampler.run(input, &mut converted)?;
     push_packed(&converted, out);
