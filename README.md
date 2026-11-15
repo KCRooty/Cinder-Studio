@@ -46,7 +46,7 @@ las librerías de FFmpeg (4.4 o más nuevo) más clang, que usan los bindings de
   cargo run -p cinder
   ```
 
-Para abrir un clip: arrastrarlo a la ventana, Ctrl+O, o `cargo run -p cinder -- clip.mp4`.
+Para importar clips: arrastrarlos a la ventana, Ctrl+I, o `cargo run -p cinder -- clip.mp4`. Los atajos de montaje están en el [CHANGELOG](CHANGELOG.md).
 
 ## Documentación
 

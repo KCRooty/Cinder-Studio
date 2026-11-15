@@ -2,6 +2,36 @@
 
 Qué cambia en cada paso y qué se ha probado. Lo más reciente, arriba.
 
+## 2026-11-15 — Fase 2, primer paso: montar en la línea de tiempo
+
+- `cinder-core`: operaciones de montaje que devuelven un cambio entero y deshacible: cuchilla,
+  insertar (parte el clip si cae dentro y empuja lo de detrás), sobrescribir (recorta, parte o
+  quita lo que tapa), borrar con ripple, recortar principio y final, slip, roll y slide. Si un
+  paso choca, no se aplica ninguno. Nuevos `Edit::SetClip` y `Edit::Batch`.
+- Vídeo y audio de una misma toma se editan juntos (enlace implícito: mismo medio, inicio,
+  entrada y duración en pistas distintas).
+- Página **Medios**: importar (Ctrl+I o arrastrando), lista con la ficha de cada clip; un clic
+  lo abre en el visor de origen. El primer clip de un proyecto vacío fija su formato (NTSC
+  incluido: 23,976, 29,97, 59,94).
+- Página **Edición**: visor de origen con entrada y salida (I / O, Alt+X las quita), visor de
+  programa y línea de tiempo. F9 inserta, F10 sobrescribe y Mayús+F12 añade al final, en V1 y
+  A1. Ctrl+B corta en el cabezal, Retroceso quita dejando hueco, Supr (o Mayús+Retroceso)
+  borra con ripple. `,` / `.` empujan un fotograma; con Alt, slip; con Mayús, slide; con Ctrl,
+  roll del corte de la derecha. ↑ / ↓ saltan de corte en corte. Ratón: arrastrar mueve (con
+  imán al cabezal y a los bordes, también a otra pista), arrastrar un borde recorta,
+  Ctrl+rueda acerca, Mayús+Z encaja todo. Ctrl+Z / Ctrl+Mayús+Z deshacen y rehacen.
+- Guardar (Ctrl+S, Ctrl+Mayús+S) y abrir (Ctrl+O) proyectos `.cinder`.
+- El visor de programa reproduce la línea de tiempo pasando de clip en clip, **todavía sin
+  sonido**: la mezcla de las pistas de audio es el siguiente paso.
+
+Probado: 36 tests (más el de la tarjeta de sonido), clippy sin avisos. En la app, bajo Xvfb, con un clip de 12 s a 25 fps:
+marcar 1–4 s e insertar con F9 y añadir con Mayús+F12 pone el vídeo y el audio en V1 y A1;
+Ctrl+B en 00:00:04:13 corta las dos pistas y el programa enseña el fotograma 63 del medio
+(el que toca); Supr borra con ripple en las dos pistas; reproducir pasa de un clip al
+siguiente; arrastrar el borde recorta 10 fotogramas, arrastrar un clip se imanta al anterior y
+Ctrl+Z lo deshace. Falta: probarlo en Windows, el sonido del programa, guardar con el diálogo
+real (el guardado en sí tiene tests) y los bins.
+
 ## 2026-11-15 — Fase 1 terminada: abrir y reproducir un clip
 
 - Crate nuevo `cinder-media`: abre el clip con FFmpeg y lo decodifica en su propio hilo. El

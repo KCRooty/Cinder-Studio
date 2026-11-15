@@ -7,8 +7,8 @@
 //! Las que parten un clip en dos (cuchilla, insertar en medio de un clip, sobrescribir dentro
 //! de un clip) reciben el id del trozo nuevo: lo da [`Project::alloc_id`].
 //!
-//! El ripple de esta fase mueve solo la pista tocada; el ripple sincronizado entre pistas
-//! llega con los clips enlazados de vídeo y audio.
+//! Cada operación toca una pista. Para editar a la vez el vídeo y el audio de una misma toma,
+//! [`linked`] encuentra sus parejas y la interfaz aplica la operación a todas en un solo lote.
 
 use crate::history::Edit;
 use crate::project::Project;
@@ -48,6 +48,39 @@ fn halves(c: &Clip, at: Frames, right_id: ClipId) -> (Clip, Clip) {
         duration: c.end() - at,
     };
     (left, right)
+}
+
+/// El clip y sus parejas: los de otras pistas con el mismo medio, el mismo inicio, la misma
+/// entrada y la misma duración (el vídeo y el audio de una toma insertada de una vez). Es el
+/// enlace implícito de esta fase; el explícito, guardado en el proyecto, llegará más adelante.
+pub fn linked(p: &Project, track_index: usize, id: ClipId) -> Vec<(usize, ClipId)> {
+    let Some(c) = p.timeline.tracks.get(track_index).and_then(|t| t.clip(id)) else { return Vec::new() };
+    let mut out = vec![(track_index, id)];
+    for (i, t) in p.timeline.tracks.iter().enumerate() {
+        if i == track_index {
+            continue;
+        }
+        if let Some(o) = t.clips().iter().find(|o| {
+            o.media == c.media && o.start == c.start && o.source_in == c.source_in && o.duration == c.duration
+        }) {
+            out.push((i, o.id));
+        }
+    }
+    out
+}
+
+/// Aplica la misma operación al clip y a sus parejas, como un solo cambio.
+pub fn on_linked(
+    p: &Project,
+    track_index: usize,
+    id: ClipId,
+    op: impl Fn(&Project, usize, ClipId) -> Result<Edit, EditError>,
+) -> Result<Edit, EditError> {
+    let edits = linked(p, track_index, id).into_iter().map(|(t, c)| op(p, t, c)).collect::<Result<Vec<_>, _>>()?;
+    if edits.is_empty() {
+        return Err(EditError::NoSuchClip(id));
+    }
+    Ok(Edit::Batch(edits))
 }
 
 /// Cuchilla: parte en `at` el clip que lo ocupa.
@@ -355,6 +388,22 @@ mod tests {
         let p = project(&[(1, 0, 100, 20), (2, 20, 300, 10), (3, 30, 200, 20)]);
         check(p.clone(), slide(&p, 0, ClipId(2), 4), &[(1, 0, 100, 24), (2, 24, 300, 10), (3, 34, 204, 16)]);
         check(p.clone(), slide(&p, 0, ClipId(2), -4), &[(1, 0, 100, 16), (2, 16, 300, 10), (3, 26, 196, 24)]);
+    }
+
+    #[test]
+    fn el_video_y_su_audio_se_editan_juntos() {
+        let mut p = project(&[(1, 0, 0, 10), (2, 10, 50, 20)]);
+        // A1 (pista 1): la pareja del clip 2 y otro clip que no lo es (otra entrada).
+        p.timeline.tracks[1].insert(new_clip(7, 10, 50, 20)).unwrap();
+        p.timeline.tracks[1].insert(new_clip(8, 40, 0, 5)).unwrap();
+        assert_eq!(linked(&p, 0, ClipId(2)), vec![(0, ClipId(2)), (1, ClipId(7))]);
+        assert_eq!(linked(&p, 0, ClipId(1)), vec![(0, ClipId(1))]);
+        let mut h = History::default();
+        let edit = on_linked(&p, 0, ClipId(2), ripple_delete).unwrap();
+        h.apply(&mut p.timeline, edit).unwrap();
+        assert_eq!(layout(&p), [(1, 0, 0, 10)]);
+        let a1: Vec<_> = p.timeline.tracks[1].clips().iter().map(|c| (c.id.0, c.start)).collect();
+        assert_eq!(a1, [(8, 20)], "el audio también se corre");
     }
 
     #[test]
