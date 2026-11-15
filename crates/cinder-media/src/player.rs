@@ -294,7 +294,16 @@ fn info_of(input: &ff::format::context::Input, path: &Path) -> Result<MediaInfo,
     let vdec = vctx.decoder().video()?;
     let rate = v.avg_frame_rate();
     let fps = if rate.denominator() != 0 { f64::from(rate) } else { 0.0 };
-    let duration = if input.duration() > 0 { input.duration() as f64 / f64::from(ff::ffi::AV_TIME_BASE) } else { 0.0 };
+    // La duración que cuenta es la del vídeo: el contenedor suele alargarse unos milisegundos
+    // por el audio, y ese trozo no tiene imagen.
+    let video_secs = v.duration() as f64 * f64::from(v.time_base());
+    let duration = if v.duration() > 0 && video_secs > 0.0 {
+        video_secs
+    } else if input.duration() > 0 {
+        input.duration() as f64 / f64::from(ff::ffi::AV_TIME_BASE)
+    } else {
+        0.0
+    };
     let (audio_codec, audio_rate) = match input.streams().best(ff::media::Type::Audio) {
         Some(a) => {
             let actx = ff::codec::Context::from_parameters(a.parameters())?;

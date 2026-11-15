@@ -33,6 +33,16 @@ pub struct MediaItem {
     /// Relativa a la carpeta del proyecto cuando el medio está dentro de ella.
     pub path: PathBuf,
     pub duration: Frames,
+    /// Carpeta (bin) en la que está; sin carpeta, en la principal.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bin: Option<u64>,
+}
+
+/// Carpeta del panel de medios.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Bin {
+    pub id: u64,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +51,8 @@ pub struct Project {
     pub name: String,
     pub settings: ProjectSettings,
     pub media: Vec<MediaItem>,
+    #[serde(default)]
+    pub bins: Vec<Bin>,
     pub timeline: Timeline,
     next_id: u64,
 }
@@ -71,6 +83,7 @@ impl Project {
             name: name.into(),
             settings: ProjectSettings::default(),
             media: Vec::new(),
+            bins: Vec::new(),
             timeline: Timeline::with_default_tracks(),
             next_id: 1,
         }
@@ -81,6 +94,11 @@ impl Project {
         let id = self.next_id;
         self.next_id += 1;
         id
+    }
+
+    /// ¿Hay algún clip de la línea de tiempo que use este medio?
+    pub fn media_in_use(&self, id: MediaId) -> bool {
+        self.timeline.tracks.iter().any(|t| t.clips().iter().any(|c| c.media == id))
     }
 
     /// Guarda en `dir` (la carpeta `.cinder`), creándola si hace falta.
@@ -125,8 +143,14 @@ mod tests {
     fn sample() -> Project {
         let mut p = Project::new("Prueba");
         let media = MediaId(p.alloc_id());
-        p.media.push(MediaItem { id: media, name: "toma1.mp4".into(), path: "medios/toma1.mp4".into(), duration: 300 });
-        let clip = Clip { id: ClipId(p.alloc_id()), media, start: 0, source_in: 12, duration: 120 };
+        p.media.push(MediaItem {
+            id: media,
+            name: "toma1.mp4".into(),
+            path: "medios/toma1.mp4".into(),
+            duration: 300,
+            bin: None,
+        });
+        let clip = Clip { id: ClipId(p.alloc_id()), media, start: 0, source_in: 12, duration: 120, link: Some(7) };
         History::default().apply(&mut p.timeline, Edit::AddClip { track: 0, clip }).unwrap();
         p
     }
@@ -159,6 +183,19 @@ mod tests {
             Err(ProjectError::TooNew { found: 99, supported: FORMAT_VERSION }) => {}
             other => panic!("esperaba TooNew, llegó {other:?}"),
         }
+    }
+
+    #[test]
+    fn un_proyecto_de_antes_de_los_bins_y_los_enlaces_se_abre_igual() {
+        let old = r#"{"version":1,"name":"Viejo","settings":{"fps":{"num":25,"den":1},"width":1920,"height":1080,"sample_rate":48000},
+            "media":[{"id":1,"name":"a.mp4","path":"a.mp4","duration":100}],
+            "timeline":{"tracks":[{"kind":"Video","name":"V1","clips":[{"id":2,"media":1,"start":0,"source_in":0,"duration":50}]},
+            {"kind":"Audio","name":"A1","clips":[]}]},"next_id":3}"#;
+        let p = Project::from_json(old).unwrap();
+        assert!(p.bins.is_empty());
+        assert_eq!(p.media[0].bin, None);
+        assert_eq!(p.timeline.tracks[0].clips()[0].link, None);
+        assert!(!p.timeline.tracks[0].muted);
     }
 
     #[test]

@@ -118,3 +118,23 @@ fn con_tarjeta_el_reloj_va_con_el_audio() -> Result<(), Box<dyn std::error::Erro
     assert!((last - pos).abs() < 0.1, "vídeo {last} y audio {pos} desfasados");
     Ok(())
 }
+
+#[test]
+fn la_forma_de_onda_cubre_el_clip_entero() -> Result<(), Box<dyn std::error::Error>> {
+    let peaks = cinder_media::peaks(&clip(), 50)?;
+    // 2 s a 50 tramos por segundo; el AAC puede añadir o quitar unos milisegundos.
+    assert!((95..=106).contains(&peaks.len()), "{} tramos", peaks.len());
+    let loud = peaks.iter().filter(|&&p| p > 0.05).count();
+    assert!(loud > peaks.len() / 2, "el tono de prueba debería verse: {loud} tramos con señal");
+    assert!(peaks.iter().all(|&p| (0.0..=1.0).contains(&p)));
+    Ok(())
+}
+
+#[test]
+fn la_miniatura_es_pequena_y_tiene_imagen() -> Result<(), Box<dyn std::error::Error>> {
+    let t = cinder_media::thumbnail(&clip(), 160)?;
+    assert_eq!((t.width, t.height), (160, 90));
+    assert_eq!(t.rgba.len(), 160 * 90 * 4);
+    assert!(t.rgba.chunks(4).any(|p| p[0] > 40 || p[1] > 40 || p[2] > 40), "no debería ser negra");
+    Ok(())
+}
