@@ -36,6 +36,10 @@ pub struct Clip {
     /// Primer fotograma usado del medio de origen.
     pub source_in: Frames,
     pub duration: Frames,
+    /// Enlace entre el vídeo y el audio de una misma toma: los clips con el mismo número se
+    /// seleccionan y editan juntos mientras coincidan en el tiempo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<u64>,
 }
 
 impl Clip {
@@ -58,6 +62,9 @@ pub enum TrackKind {
 pub struct Track {
     pub kind: TrackKind,
     pub name: String,
+    /// Pista silenciada (audio) u oculta (vídeo).
+    #[serde(default)]
+    pub muted: bool,
     /// Siempre ordenados por `start` y sin solaparse.
     clips: Vec<Clip>,
 }
@@ -82,11 +89,13 @@ pub enum EditError {
     NoSuchMedia(MediaId),
     #[error("los dos clips no están pegados")]
     NotAdjacent,
+    #[error("tiene que quedar al menos una pista de cada tipo")]
+    LastTrack,
 }
 
 impl Track {
     pub fn new(kind: TrackKind, name: impl Into<String>) -> Self {
-        Self { kind, name: name.into(), clips: Vec::new() }
+        Self { kind, name: name.into(), muted: false, clips: Vec::new() }
     }
 
     pub fn clips(&self) -> &[Clip] {
@@ -178,6 +187,29 @@ impl Timeline {
     pub fn duration(&self) -> Frames {
         self.tracks.iter().map(Track::end).max().unwrap_or(0)
     }
+
+    /// Nombre para la siguiente pista de ese tipo: V2, A3…
+    pub fn next_track_name(&self, kind: TrackKind) -> String {
+        let n = self.tracks.iter().filter(|t| t.kind == kind).count() + 1;
+        format!("{}{n}", if kind == TrackKind::Video { 'V' } else { 'A' })
+    }
+
+    pub fn insert_track(&mut self, index: usize, track: Track) -> Result<(), EditError> {
+        if index > self.tracks.len() {
+            return Err(EditError::NoSuchTrack(index));
+        }
+        self.tracks.insert(index, track);
+        Ok(())
+    }
+
+    /// Quita la pista (con sus clips) y la devuelve. No deja el proyecto sin pistas de ese tipo.
+    pub fn remove_track(&mut self, index: usize) -> Result<Track, EditError> {
+        let kind = self.track(index)?.kind;
+        if self.tracks.iter().filter(|t| t.kind == kind).count() <= 1 {
+            return Err(EditError::LastTrack);
+        }
+        Ok(self.tracks.remove(index))
+    }
 }
 
 #[cfg(test)]
@@ -185,7 +217,7 @@ mod tests {
     use super::*;
 
     fn clip(id: u64, start: Frames, duration: Frames) -> Clip {
-        Clip { id: ClipId(id), media: MediaId(1), start, source_in: 0, duration }
+        Clip { id: ClipId(id), media: MediaId(1), start, source_in: 0, duration, link: None }
     }
 
     #[test]
