@@ -4,6 +4,7 @@
 //! con deshacer/rehacer por comandos y guardado en el formato `.cinder`.
 
 pub mod history;
+pub mod ops;
 pub mod project;
 pub mod timeline;
 
