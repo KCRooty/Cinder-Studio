@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::timeline::{Clip, ClipId, EditError, Frames, Timeline};
+use crate::timeline::{Clip, ClipId, EditError, Frames, Timeline, Track};
 
 /// Un cambio reversible en la línea de tiempo. Aplicarlo devuelve el cambio que lo deshace.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +22,15 @@ pub enum Edit {
     SetClip {
         track: usize,
         clip: Clip,
+    },
+    /// Pista nueva en esa posición de la lista.
+    InsertTrack {
+        index: usize,
+        track: Track,
+    },
+    /// Quita la pista entera, con sus clips.
+    RemoveTrack {
+        index: usize,
     },
     /// Varios cambios como uno solo: se aplican en orden y, si uno falla, se deshacen los anteriores.
     Batch(Vec<Edit>),
@@ -46,6 +55,14 @@ impl Edit {
             Edit::SetClip { track, clip } => {
                 let old = timeline.track_mut(track)?.replace(clip)?;
                 Ok(Edit::SetClip { track, clip: old })
+            }
+            Edit::InsertTrack { index, track } => {
+                timeline.insert_track(index, track)?;
+                Ok(Edit::RemoveTrack { index })
+            }
+            Edit::RemoveTrack { index } => {
+                let track = timeline.remove_track(index)?;
+                Ok(Edit::InsertTrack { index, track })
             }
             Edit::Batch(edits) => {
                 let mut inverses = Vec::with_capacity(edits.len());
@@ -114,7 +131,7 @@ mod tests {
     use crate::timeline::MediaId;
 
     fn clip(id: u64, start: Frames) -> Clip {
-        Clip { id: ClipId(id), media: MediaId(1), start, source_in: 0, duration: 10 }
+        Clip { id: ClipId(id), media: MediaId(1), start, source_in: 0, duration: 10, link: None }
     }
 
     #[test]
@@ -160,6 +177,24 @@ mod tests {
         assert_eq!(err, Err(EditError::Overlap));
         assert!(h.undo(&mut tl).unwrap());
         assert!(!h.can_undo());
+    }
+
+    #[test]
+    fn quitar_una_pista_se_deshace_con_sus_clips() {
+        use crate::timeline::TrackKind;
+        let mut tl = Timeline::with_default_tracks();
+        let mut h = History::default();
+        h.apply(&mut tl, Edit::InsertTrack { index: 2, track: Track::new(TrackKind::Video, "V2") }).unwrap();
+        h.apply(&mut tl, Edit::AddClip { track: 2, clip: clip(1, 0) }).unwrap();
+        let full = tl.clone();
+        h.apply(&mut tl, Edit::RemoveTrack { index: 2 }).unwrap();
+        assert_eq!(tl.tracks.len(), 2);
+        h.undo(&mut tl).unwrap();
+        assert_eq!(tl, full);
+        // La última pista de un tipo no se puede quitar.
+        h.undo(&mut tl).unwrap();
+        h.undo(&mut tl).unwrap();
+        assert_eq!(h.apply(&mut tl, Edit::RemoveTrack { index: 0 }), Err(EditError::LastTrack));
     }
 
     #[test]

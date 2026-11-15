@@ -1,4 +1,8 @@
-//! Visor de origen: un clip suelto con su barra de transporte y sus marcas de entrada y salida.
+//! Visor de origen: un clip suelto con sus marcas de entrada y salida.
+//!
+//! La imagen la lleva un reproductor mudo y el sonido sale por el mezclador de la aplicación
+//! (el mismo del programa): así hay una sola salida de audio abierta, que es lo único que
+//! admiten algunos sistemas. El reloj es el del mezclador; si la imagen se separa, se recoloca.
 //!
 //! Atajos (con el visor activo y sin un campo de texto activo):
 //! Espacio reproduce o para · K para · L reproduce · J retrocede 1 s · ← / → un fotograma ·
@@ -6,8 +10,11 @@
 
 use std::path::{Path, PathBuf};
 
-use cinder_media::Player;
-use eframe::egui::{self, Color32, ColorImage, Key, RichText, TextureHandle, TextureOptions, Vec2};
+use cinder_media::{AudioClipHandle, MediaInfo, Mixer, Player};
+use eframe::egui::{self, Key, TextureHandle};
+
+use crate::monitor::{self, MonitorInput, timecode};
+use crate::theme;
 
 pub const VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "mkv", "webm", "avi", "m4v", "mxf", "mts", "ts"];
 
@@ -20,8 +27,11 @@ pub struct Viewer {
     /// Entrada y salida marcadas, en segundos del clip.
     mark_in: Option<f64>,
     mark_out: Option<f64>,
-    /// Se pidió importar desde el visor vacío; lo atiende la app.
-    pub wants_import: bool,
+    /// El audio del clip sonando en el mezclador.
+    voice: Option<AudioClipHandle>,
+    /// Segundo del clip y valor del reloj del mezclador al empezar a reproducir.
+    base: Option<(f64, u64)>,
+    last_resync: Option<std::time::Instant>,
 }
 
 impl Viewer {
@@ -33,7 +43,9 @@ impl Viewer {
             error: None,
             mark_in: None,
             mark_out: None,
-            wants_import: false,
+            voice: None,
+            base: None,
+            last_resync: None,
         }
     }
 
@@ -44,7 +56,9 @@ impl Viewer {
         self.shown_pts = None;
         self.mark_in = None;
         self.mark_out = None;
-        match Player::open(path) {
+        self.voice = None;
+        self.base = None;
+        match Player::open_silent(path) {
             Ok(p) => {
                 self.error = None;
                 self.player = Some(p);
@@ -57,8 +71,71 @@ impl Viewer {
         self.player.as_ref().map(|p| p.info().path.as_path())
     }
 
-    pub fn info(&self) -> Option<&cinder_media::MediaInfo> {
+    pub fn info(&self) -> Option<&MediaInfo> {
         self.player.as_ref().map(Player::info)
+    }
+
+    pub fn is_playing(&self) -> bool {
+        self.base.is_some()
+    }
+
+    /// Segundo del clip: reproduciendo lo dice el reloj del mezclador; en pausa, el reproductor.
+    fn position(&self, mixer: &Mixer) -> f64 {
+        let Some(p) = self.player.as_ref() else { return 0.0 };
+        match self.base {
+            Some((secs, clock)) => {
+                let elapsed = mixer.clock().saturating_sub(clock) as f64 / f64::from(mixer.rate().max(1));
+                (secs + elapsed).min(p.info().duration.max(0.0))
+            }
+            None => p.position(),
+        }
+    }
+
+    pub fn play(&mut self, mixer: &mut Mixer) {
+        let Some(p) = self.player.as_mut() else { return };
+        if self.base.is_some() {
+            return;
+        }
+        let duration = p.info().duration;
+        if duration > 0.0 && p.position() >= duration - 1e-3 {
+            p.seek(0.0);
+        }
+        let from = p.position();
+        p.play();
+        mixer.set_playing(true);
+        let clock = mixer.clock();
+        self.base = Some((from, clock));
+        self.last_resync = Some(std::time::Instant::now());
+        if p.info().audio_codec.is_some() {
+            let frames = ((duration - from).max(0.0) * f64::from(mixer.rate())) as u64;
+            self.voice = mixer.add_clip(&p.info().path, from, frames, clock, 1.0);
+        }
+    }
+
+    pub fn pause(&mut self, mixer: &mut Mixer) {
+        if self.base.take().is_some() {
+            mixer.set_playing(false);
+        }
+        self.voice = None;
+        if let Some(p) = self.player.as_mut() {
+            p.pause();
+        }
+    }
+
+    pub fn toggle(&mut self, mixer: &mut Mixer) {
+        if self.is_playing() { self.pause(mixer) } else { self.play(mixer) }
+    }
+
+    /// Salta a un segundo del clip; si estaba reproduciendo, sigue desde ahí.
+    fn seek(&mut self, mixer: &mut Mixer, secs: f64) {
+        let playing = self.is_playing();
+        self.pause(mixer);
+        if let Some(p) = self.player.as_mut() {
+            p.seek(secs);
+        }
+        if playing {
+            self.play(mixer);
+        }
     }
 
     /// Tramo marcado en segundos: de la entrada (o el principio) a la salida (o el final).
@@ -67,12 +144,6 @@ impl Viewer {
         let a = self.mark_in.unwrap_or(0.0);
         let b = self.mark_out.unwrap_or(info.duration);
         (b > a).then_some((a, b))
-    }
-
-    pub fn pause(&mut self) {
-        if let Some(p) = self.player.as_mut() {
-            p.pause();
-        }
     }
 
     /// Rutas elegidas en el diálogo de importar.
@@ -85,97 +156,167 @@ impl Viewer {
             .unwrap_or_default()
     }
 
-    pub fn handle_input(&mut self, ctx: &egui::Context) {
-        if ctx.egui_wants_keyboard_input() {
+    fn step(&self) -> f64 {
+        let fps = self.info().map_or(0.0, |i| i.fps);
+        1.0 / if fps > 0.0 { fps } else { 25.0 }
+    }
+
+    fn set_in(&mut self, mixer: &Mixer) {
+        if self.player.is_none() {
             return;
         }
-        let Some(p) = self.player.as_mut() else { return };
-        let step = 1.0 / if p.info().fps > 0.0 { p.info().fps } else { 25.0 };
-        let (mark_in, mark_out) = (&mut self.mark_in, &mut self.mark_out);
-        ctx.input(|i| {
-            if i.modifiers.alt && i.key_pressed(Key::X) {
-                *mark_in = None;
-                *mark_out = None;
-            }
-            if i.modifiers.any() {
-                return;
-            }
-            if i.key_pressed(Key::I) {
-                *mark_in = Some(p.position());
-                if mark_out.is_some_and(|o| o <= p.position()) {
-                    *mark_out = None;
-                }
-            }
-            if i.key_pressed(Key::O) {
-                *mark_out = Some(p.position());
-                if mark_in.is_some_and(|m| m >= p.position()) {
-                    *mark_in = None;
-                }
-            }
-            if i.key_pressed(Key::Space) {
-                p.toggle();
-            }
-            if i.key_pressed(Key::K) {
-                p.pause();
-            }
-            if i.key_pressed(Key::L) {
-                p.play();
-            }
-            if i.key_pressed(Key::J) {
-                let t = p.position();
-                p.seek(t - 1.0);
-            }
-            if i.key_pressed(Key::ArrowRight) {
-                p.pause();
-                let t = p.position();
-                p.seek(t + step);
-            }
-            if i.key_pressed(Key::ArrowLeft) {
-                p.pause();
-                let t = p.position();
-                p.seek(t - step);
-            }
-            if i.key_pressed(Key::Home) {
-                p.seek(0.0);
-            }
-            if i.key_pressed(Key::End) {
-                p.pause();
-                let d = p.info().duration;
-                p.seek(d - step);
-            }
-        });
-    }
-
-    /// Devuelve `true` si se hizo clic en la imagen (para que pase a ser el visor activo).
-    pub fn ui(&mut self, ui: &mut egui::Ui) -> bool {
-        if self.player.is_none() {
-            self.empty_state(ui);
-            return false;
+        let t = self.position(mixer);
+        self.mark_in = Some(t);
+        if self.mark_out.is_some_and(|o| o <= t) {
+            self.mark_out = None;
         }
-        self.upload_frame(ui.ctx());
-        let transport_h = 64.0;
-        let area = ui.available_size() - Vec2::new(0.0, transport_h);
-        let clicked = draw_picture(ui, self.texture.as_ref(), area).clicked();
-        ui.add_space(6.0);
-        self.transport(ui);
-        clicked
     }
 
-    fn empty_state(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(ui.available_height() * 0.3);
-            ui.heading(RichText::new("Visor").size(28.0));
-            ui.add_space(6.0);
-            ui.label("Arrastra clips a la ventana o impórtalos con Ctrl+I.");
-            ui.add_space(10.0);
-            if ui.button(RichText::new("Importar clips…").size(15.0)).clicked() {
-                self.wants_import = true;
+    fn set_out(&mut self, mixer: &Mixer) {
+        if self.player.is_none() {
+            return;
+        }
+        let t = self.position(mixer);
+        self.mark_out = Some(t);
+        if self.mark_in.is_some_and(|i| i >= t) {
+            self.mark_in = None;
+        }
+    }
+
+    fn step_by(&mut self, mixer: &mut Mixer, frames: f64) {
+        let t = self.position(mixer) + frames * self.step();
+        self.pause(mixer);
+        self.seek(mixer, t);
+    }
+
+    fn go_to_end(&mut self, mixer: &mut Mixer) {
+        let t = self.info().map_or(0.0, |i| i.duration) - self.step();
+        self.pause(mixer);
+        self.seek(mixer, t);
+    }
+
+    pub fn handle_input(&mut self, ctx: &egui::Context, mixer: &mut Mixer) {
+        if ctx.egui_wants_keyboard_input() || self.player.is_none() {
+            return;
+        }
+        let key = |k: Key| ctx.input(|i| !i.modifiers.any() && i.key_pressed(k));
+        if ctx.input(|i| i.modifiers.alt && i.key_pressed(Key::X)) {
+            self.mark_in = None;
+            self.mark_out = None;
+        }
+        if key(Key::I) {
+            self.set_in(mixer);
+        }
+        if key(Key::O) {
+            self.set_out(mixer);
+        }
+        if key(Key::ArrowRight) {
+            self.step_by(mixer, 1.0);
+        }
+        if key(Key::ArrowLeft) {
+            self.step_by(mixer, -1.0);
+        }
+        if key(Key::End) {
+            self.go_to_end(mixer);
+        }
+        if key(Key::Space) {
+            self.toggle(mixer);
+        }
+        if key(Key::K) {
+            self.pause(mixer);
+        }
+        if key(Key::L) {
+            self.play(mixer);
+        }
+        if key(Key::J) {
+            let t = self.position(mixer) - 1.0;
+            self.seek(mixer, t);
+        }
+        if key(Key::Home) {
+            self.seek(mixer, 0.0);
+        }
+    }
+
+    /// Mantiene la imagen pegada al reloj del mezclador y para al llegar al final.
+    fn follow_clock(&mut self, mixer: &mut Mixer) {
+        if self.base.is_none() {
+            return;
+        }
+        let want = self.position(mixer);
+        let Some(p) = self.player.as_mut() else { return };
+        let ended = !p.is_playing() || (p.info().duration > 0.0 && want >= p.info().duration - 1e-3);
+        if ended {
+            self.pause(mixer);
+            return;
+        }
+        let settled = self.last_resync.is_none_or(|t| t.elapsed().as_secs_f64() > 0.5);
+        if settled && (p.position() - want).abs() > 0.08 {
+            p.seek(want);
+            self.last_resync = Some(std::time::Instant::now());
+        }
+    }
+
+    /// Devuelve `true` si se tocó el visor (para que pase a ser el activo).
+    pub fn ui(&mut self, ui: &mut egui::Ui, active: bool, mixer: &mut Mixer) -> bool {
+        self.upload_frame(ui.ctx());
+        self.follow_clock(mixer);
+        let position = self.position(mixer);
+        let playing = self.is_playing();
+        let (title, tc, dur, pos, marks, note) = match self.player.as_ref() {
+            Some(p) => {
+                let info = p.info();
+                let total = info.duration.max(0.001);
+                let name = info.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                let marks = (self.mark_in.is_some() || self.mark_out.is_some())
+                    .then(|| (self.mark_in.unwrap_or(0.0) / total, self.mark_out.unwrap_or(total) / total));
+                let note = mixer.error().map(|_| "sin tarjeta de sonido".to_owned());
+                (name, timecode(position, info.fps), timecode(info.duration, info.fps), position / total, marks, note)
             }
-            if let Some(e) = &self.error {
-                ui.add_space(10.0);
-                ui.colored_label(Color32::from_rgb(0xF0, 0x7F, 0x7F), e);
-            }
-        });
+            None => (String::new(), "00:00:00:00".into(), "00:00:00:00".into(), 0.0, None, self.error.clone()),
+        };
+        let out = monitor::show(
+            ui,
+            MonitorInput {
+                kind: "Origen",
+                title: &title,
+                timecode: tc,
+                duration: dur,
+                texture: self.texture.as_ref(),
+                playing,
+                position: pos,
+                marks,
+                active,
+                with_marks: true,
+                empty: Some("Elige un clip en el panel de medios"),
+                note: note.as_deref().map(|n| (n, theme::WARN)),
+            },
+        );
+        if out.mark_in {
+            self.set_in(mixer);
+        }
+        if out.mark_out {
+            self.set_out(mixer);
+        }
+        if out.step_back {
+            self.step_by(mixer, -1.0);
+        }
+        if out.step_fwd {
+            self.step_by(mixer, 1.0);
+        }
+        if out.to_end {
+            self.go_to_end(mixer);
+        }
+        if out.toggle {
+            self.toggle(mixer);
+        }
+        if out.to_start {
+            self.seek(mixer, 0.0);
+        }
+        if let Some(t) = out.scrub {
+            let d = self.info().map_or(0.0, |i| i.duration);
+            self.seek(mixer, t * d);
+        }
+        out.clicked
     }
 
     fn upload_frame(&mut self, ctx: &egui::Context) {
@@ -184,7 +325,7 @@ impl Viewer {
         if let Some(frame) = p.frame()
             && self.shown_pts != Some(frame.pts)
         {
-            upload(ctx, &mut self.texture, "visor-origen", frame);
+            monitor::upload(ctx, &mut self.texture, "visor-origen", frame);
             self.shown_pts = Some(frame.pts);
         }
         // Reproduciendo: repintar a cada vuelta. En pausa: lo justo para que llegue el
@@ -194,119 +335,5 @@ impl Viewer {
         } else {
             ctx.request_repaint_after(std::time::Duration::from_millis(30));
         }
-    }
-
-    fn transport(&mut self, ui: &mut egui::Ui) {
-        let Some(p) = self.player.as_mut() else { return };
-        let info = p.info().clone();
-        let mut pos = p.position();
-        ui.horizontal(|ui| {
-            if play_button(ui, p.is_playing()).on_hover_text("Espacio · K / L").clicked() {
-                p.toggle();
-            }
-            ui.monospace(timecode(pos, info.fps));
-            let width = (ui.available_width() - 120.0).max(60.0);
-            ui.spacing_mut().slider_width = width;
-            let total = info.duration.max(0.001);
-            let slider = egui::Slider::new(&mut pos, 0.0..=total).show_value(false);
-            let resp = ui.add(slider);
-            if resp.changed() {
-                p.seek(pos);
-            }
-            draw_marks(ui, resp.rect, total, self.mark_in, self.mark_out);
-            ui.monospace(timecode(info.duration, info.fps));
-        });
-        ui.horizontal(|ui| {
-            let name = info.path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            ui.weak(format!(
-                "{name} · {}×{} · {:.3} fps · {}{}",
-                info.width,
-                info.height,
-                info.fps,
-                info.video_codec,
-                info.audio_codec.as_deref().map(|a| format!(" + {a}")).unwrap_or_default()
-            ));
-            if let Some(e) = p.audio_error() {
-                ui.colored_label(Color32::from_rgb(0xF5, 0xA6, 0x23), format!("sin sonido: {e}"));
-            }
-        });
-    }
-}
-
-/// Sube un fotograma a la textura (la crea la primera vez).
-pub fn upload(ctx: &egui::Context, texture: &mut Option<TextureHandle>, name: &str, frame: &cinder_media::VideoFrame) {
-    let image = ColorImage::from_rgba_unmultiplied([frame.width as usize, frame.height as usize], &frame.rgba);
-    match texture.as_mut() {
-        Some(t) => t.set(image, TextureOptions::LINEAR),
-        None => *texture = Some(ctx.load_texture(name, image, TextureOptions::LINEAR)),
-    }
-}
-
-/// Fondo negro y la imagen encajada sin deformar.
-pub fn draw_picture(ui: &mut egui::Ui, texture: Option<&TextureHandle>, area: Vec2) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(area.max(Vec2::splat(1.0)), egui::Sense::click());
-    ui.painter().rect_filled(rect, 0.0, Color32::BLACK);
-    let Some(tex) = texture else { return resp };
-    let size = tex.size_vec2();
-    if size.x <= 0.0 || size.y <= 0.0 {
-        return resp;
-    }
-    let scale = (rect.width() / size.x).min(rect.height() / size.y);
-    let fit = egui::Rect::from_center_size(rect.center(), size * scale);
-    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
-    ui.painter().image(tex.id(), fit, uv, Color32::WHITE);
-    resp
-}
-
-/// Tramo entre entrada y salida pintado bajo la barra de posición.
-fn draw_marks(ui: &egui::Ui, rect: egui::Rect, total: f64, mark_in: Option<f64>, mark_out: Option<f64>) {
-    if mark_in.is_none() && mark_out.is_none() {
-        return;
-    }
-    let x = |t: f64| rect.left() + rect.width() * (t / total).clamp(0.0, 1.0) as f32;
-    let (a, b) = (x(mark_in.unwrap_or(0.0)), x(mark_out.unwrap_or(total)));
-    let band = egui::Rect::from_min_max(egui::pos2(a, rect.bottom() - 3.0), egui::pos2(b, rect.bottom()));
-    ui.painter().rect_filled(band, 0.0, crate::ACCENT);
-}
-
-/// Botón de reproducir/pausa dibujado (las fuentes por defecto no traen ▶ ni ⏸).
-pub fn play_button(ui: &mut egui::Ui, playing: bool) -> egui::Response {
-    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(28.0), egui::Sense::click());
-    let visuals = ui.style().interact(&resp);
-    ui.painter().rect_filled(rect, 4.0, visuals.weak_bg_fill);
-    let c = rect.center();
-    let color = visuals.fg_stroke.color;
-    if playing {
-        for dx in [-3.5, 3.5] {
-            let bar = egui::Rect::from_center_size(egui::pos2(c.x + dx, c.y), Vec2::new(3.5, 12.0));
-            ui.painter().rect_filled(bar, 1.0, color);
-        }
-    } else {
-        let pts = vec![egui::pos2(c.x - 4.0, c.y - 7.0), egui::pos2(c.x - 4.0, c.y + 7.0), egui::pos2(c.x + 7.0, c.y)];
-        ui.painter().add(egui::Shape::convex_polygon(pts, color, egui::Stroke::NONE));
-    }
-    resp
-}
-
-/// HH:MM:SS:FF, como en cualquier editor.
-pub fn timecode(secs: f64, fps: f64) -> String {
-    let fps = if fps > 0.0 { fps } else { 25.0 };
-    let base = fps.round().max(1.0) as u64;
-    let total = (secs.max(0.0) * fps).round() as u64;
-    let f = total % base;
-    let s = total / base;
-    format!("{:02}:{:02}:{:02}:{:02}", s / 3600, (s / 60) % 60, s % 60, f)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::timecode;
-
-    #[test]
-    fn timecode_cuenta_fotogramas() {
-        assert_eq!(timecode(0.0, 25.0), "00:00:00:00");
-        assert_eq!(timecode(1.24, 25.0), "00:00:01:06");
-        assert_eq!(timecode(3661.48, 25.0), "01:01:01:12");
-        assert_eq!(timecode(2.0, 0.0), "00:00:02:00");
     }
 }
