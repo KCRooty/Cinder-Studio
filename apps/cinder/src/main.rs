@@ -1,11 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod pages;
+mod viewer;
 
 use cinder_core::Project;
 use eframe::egui::{self, Color32, RichText};
 
 use pages::Page;
+use viewer::Viewer;
 
 const ACCENT: Color32 = Color32::from_rgb(0x7B, 0x61, 0xFF);
 
@@ -24,6 +26,7 @@ fn main() -> eframe::Result {
 struct CinderApp {
     project: Project,
     page: Page,
+    viewer: Viewer,
 }
 
 impl CinderApp {
@@ -32,7 +35,12 @@ impl CinderApp {
         visuals.selection.bg_fill = ACCENT;
         visuals.hyperlink_color = ACCENT;
         cc.egui_ctx.set_visuals(visuals);
-        Self { project: Project::new("Proyecto sin título"), page: Page::Edicion }
+        let mut viewer = Viewer::new();
+        // `cinder-studio clip.mp4` (y «Abrir con» del sistema) abre el clip directamente.
+        if let Some(path) = std::env::args_os().nth(1) {
+            viewer.open(std::path::Path::new(&path));
+        }
+        Self { project: Project::new("Proyecto sin título"), page: Page::Edicion, viewer }
     }
 
     fn handle_shortcuts(&mut self, ctx: &egui::Context) {
@@ -76,7 +84,16 @@ impl CinderApp {
         });
     }
 
-    fn page_body(&self, ui: &mut egui::Ui) {
+    /// Medios y Edición enseñan ya el visor (Fase 1); el resto, de qué va la página.
+    fn has_viewer(&self) -> bool {
+        matches!(self.page, Page::Medios | Page::Edicion)
+    }
+
+    fn page_body(&mut self, ui: &mut egui::Ui) {
+        if self.has_viewer() {
+            self.viewer.ui(ui);
+            return;
+        }
         ui.vertical_centered(|ui| {
             ui.add_space(ui.available_height() * 0.3);
             ui.heading(RichText::new(self.page.label()).size(32.0));
@@ -91,6 +108,9 @@ impl CinderApp {
 impl eframe::App for CinderApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_shortcuts(ctx);
+        if self.has_viewer() {
+            self.viewer.handle_input(ctx);
+        }
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
