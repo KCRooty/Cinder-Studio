@@ -8,7 +8,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   # FFmpeg para Windows: compilación LGPL compartida de BtbN/FFmpeg-Builds, fijada a una
-  # versión concreta para que el CI no cambie solo (AGENTS.md §7: LGPL y enlace dinámico).
+  # versión concreta para que el CI no cambie solo (DESARROLLO.md §7: LGPL y enlace dinámico).
   FFMPEG_WIN_TAG: autobuild-2026-11-14-12-37
   FFMPEG_WIN_ZIP: ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-shared-9.0
 

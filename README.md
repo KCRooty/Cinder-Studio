@@ -11,12 +11,15 @@ programa — con código 100% propio, reimplementación clean-room, escrito en
 
 Sustituye a CoalMix Studio (DAW, cancelado el 2026-11-10).
 
-**Antes de tocar nada:** lee [`AGENTS.md`](AGENTS.md) (reglas clean-room, no
+**Antes de tocar nada:** lee [`DESARROLLO.md`](DESARROLLO.md) (reglas clean-room, no
 negociables).
 
-Estado (2026-11-10): Fase 1 en curso. Ya hay ventana (egui sobre wgpu) con las siete
-páginas y su barra inferior, y el modelo de proyecto con deshacer/rehacer y guardado en
-`.cinder`. Todavía no abre ni reproduce vídeo. Qué se probó, en [`CHANGELOG.md`](CHANGELOG.md).
+Estado (2026-11-19): MVP completo (fases 1–3). Abre clips, los monta en una línea de tiempo
+multipista con los recortes de Resolve, reproduce el programa con su sonido y lo exporta a
+H.264 o H.265 desde la página Entrega, con presets para YouTube, TikTok y máster y una cola de
+render. Qué se probó, en [`CHANGELOG.md`](CHANGELOG.md).
+
+![La página Entrega con tres trabajos en la cola de render](docs/screenshots/02-entrega.png)
 
 ![La ventana de Cinder Studio en la página Color](docs/screenshots/01-shell-color.png)
 
@@ -52,7 +55,7 @@ Para importar clips: arrastrarlos a la ventana, Ctrl+I, o `cargo run -p cinder -
 
 | Documento | Qué cuenta |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | Reglas clean-room, qué se replica y qué se mejora, stack, calidad y licencia |
+| [`DESARROLLO.md`](DESARROLLO.md) | Reglas clean-room, qué se replica y qué se mejora, stack, calidad y licencia |
 | [`docs/PAGINAS.md`](docs/PAGINAS.md) | Las siete páginas de trabajo y qué hace cada una |
 | [`docs/ARQUITECTURA.md`](docs/ARQUITECTURA.md) | Hilos, pipeline de imagen, color, audio y formato de proyecto |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | Fases, del primer clip reproducido a la composición nodal |
@@ -97,4 +100,4 @@ y exportar a H.264/H.265, con audio sincronizado. Fases 1–3 de
 ## Licencia
 
 Dual **MIT OR Apache-2.0** (ver `LICENSE-MIT` y `LICENSE-APACHE`). FFmpeg se enlaza
-dinámicamente en su compilación LGPL. Detalle en `AGENTS.md` §7.
+dinámicamente en su compilación LGPL. Detalle en `DESARROLLO.md` §7.

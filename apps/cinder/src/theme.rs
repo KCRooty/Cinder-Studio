@@ -1,6 +1,6 @@
 //! Aspecto de la aplicación: carbón neutro con poco contraste entre paneles, texto pequeño y
 //! un único color vivo para el cabezal y la selección, como en las suites de posproducción.
-//! Los colores son propios; nada sale de capturas ni de assets de terceros (AGENTS.md §3).
+//! Los colores son propios; nada sale de capturas ni de assets de terceros (DESARROLLO.md §3).
 
 use eframe::egui::{self, Color32, CornerRadius, FontFamily, FontId, Stroke, TextStyle};
 

@@ -17,19 +17,22 @@ cada fase, no antes.
 - ✔ CI que compila y pasa los tests en Windows y Linux.
 - ✔ Modelo de proyecto, deshacer/rehacer y guardado en `.cinder` (adelantado de la Fase 2).
 
-## Fase 2 · Medios y Edición — *en curso*
+## Fase 2 · Medios y Edición — *hecha*
 
-- Página **Medios**: ✔ importar, ✔ metadatos, ✔ visor con entrada y salida; bins.
+- Página **Medios**: ✔ importar, ✔ metadatos, ✔ visor con entrada y salida, ✔ carpetas.
 - Página **Edición**: ✔ línea de tiempo multipista, ✔ J/K/L, ✔ I/O, ✔ selección, ✔ cuchilla,
-  ✔ recortes ripple/roll/slip/slide, ✔ inserción y sobrescritura; sonido del programa
-  (mezcla de las pistas de audio), enlace explícito de vídeo y audio, añadir y quitar pistas.
+  ✔ recortes ripple/roll/slip/slide, ✔ inserción y sobrescritura, ✔ sonido del programa
+  (mezcla de las pistas de audio), ✔ enlace de vídeo y audio guardado, ✔ añadir y quitar pistas.
 - ✔ Formato `.cinder` versionado; ✔ deshacer y rehacer.
 
-## Fase 3 · Entrega — *fin del MVP*
+## Fase 3 · Entrega — *hecha, fin del MVP*
 
-- Página **Entrega**: exportar la línea de tiempo a H.264/H.265 vía FFmpeg.
-- Presets básicos (YouTube, TikTok, máster) y cola de render.
-- Primeros casos del oráculo: el mismo montaje exportado en Resolve y en Cinder.
+- ✔ Página **Entrega**: exportar la línea de tiempo a H.264/H.265 con audio AAC vía FFmpeg.
+- ✔ Presets: YouTube 1080p, YouTube 4K, TikTok/Shorts (vertical) y Máster.
+- ✔ Cola de render en segundo plano, con progreso, cancelar y varios trabajos seguidos.
+- Pendiente: los primeros casos del oráculo (el mismo montaje exportado en Resolve y en
+  Cinder), rango de entrada/salida en vez de la línea de tiempo entera, y respetar la rotación
+  de los vídeos grabados con el móvil.
 
 ## Fase 4 · Color
 

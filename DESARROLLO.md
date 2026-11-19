@@ -1,6 +1,6 @@
-# AGENTS.md — Cinder Studio
+# DESARROLLO.md — Cinder Studio
 
-Reglas obligatorias para cualquier agente de IA o colaborador humano.
+Reglas obligatorias para cualquier persona que colabore en el proyecto.
 Cinder Studio es un editor de vídeo open source de Static Forge que replica el flujo
 de trabajo de DaVinci Resolve con código propio, y lo mejora.
 

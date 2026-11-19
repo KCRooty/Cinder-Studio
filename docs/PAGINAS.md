@@ -5,7 +5,7 @@ inferior, de izquierda a derecha, todas trabajando sobre el mismo proyecto y la
 misma línea de tiempo. Cambiar de página no exporta ni copia nada; es otra vista del
 mismo material.
 
-Los nombres son propios (ver `AGENTS.md` §1). La columna de la derecha dice en qué
+Los nombres son propios (ver `DESARROLLO.md` §1). La columna de la derecha dice en qué
 fase de [`ROADMAP.md`](ROADMAP.md) entra cada una.
 
 | Página | Equivale a | Qué se hace aquí | Crate principal | Fase |
