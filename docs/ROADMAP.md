@@ -8,11 +8,11 @@ cada fase, no antes.
 - Este repo: reglas, páginas, arquitectura y roadmap.
 - Formato del archivo principal de `.cinder`: JSON (decidido el 2026-11-10).
 
-## Fase 1 · Cimientos — *en curso*
+## Fase 1 · Cimientos — *hecha*
 
 - ✔ Workspace de Cargo (`cinder-core` y la app; el resto de crates, cuando toque).
 - ✔ Ventana con egui sobre wgpu, con las siete páginas y Mayús+2 … Mayús+8.
-- Abrir un clip, decodificarlo con FFmpeg y reproducirlo en el visor con el audio
+- ✔ Abrir un clip, decodificarlo con FFmpeg y reproducirlo en el visor con el audio
   sincronizado.
 - ✔ CI que compila y pasa los tests en Windows y Linux.
 - ✔ Modelo de proyecto, deshacer/rehacer y guardado en `.cinder` (adelantado de la Fase 2).

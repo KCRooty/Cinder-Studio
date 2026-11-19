@@ -7,6 +7,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # FFmpeg para Windows: compilación LGPL compartida de BtbN/FFmpeg-Builds, fijada a una
+  # versión concreta para que el CI no cambie solo (AGENTS.md §7: LGPL y enlace dinámico).
+  FFMPEG_WIN_TAG: autobuild-2026-11-14-12-37
+  FFMPEG_WIN_ZIP: ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-shared-9.0
 
 jobs:
   build:
@@ -21,6 +25,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+
+      - name: FFmpeg y ALSA (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang pkg-config libasound2-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libavdevice-dev libavfilter-dev \
+            libswscale-dev libswresample-dev
+
+      - name: FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/BtbN/FFmpeg-Builds/releases/download/$env:FFMPEG_WIN_TAG/$env:FFMPEG_WIN_ZIP.zip"
+          Invoke-WebRequest $url -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath $env:RUNNER_TEMP
+          $dir = Join-Path $env:RUNNER_TEMP $env:FFMPEG_WIN_ZIP
+          "FFMPEG_DIR=$dir" | Out-File -Append $env:GITHUB_ENV
+          # Las DLL tienen que estar en el PATH para que corran los tests.
+          (Join-Path $dir "bin") | Out-File -Append $env:GITHUB_PATH
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -Append $env:GITHUB_ENV
+
       - uses: Swatinem/rust-cache@v2
       - name: Formato
         run: cargo fmt --all --check

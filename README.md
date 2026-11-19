@@ -28,8 +28,25 @@ cargo test --workspace              # tests
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Hace falta Rust estable (1.85 o más nuevo) y una tarjeta con Vulkan, DirectX 12 o Metal.
-En Linux, además, las librerías de ejecución de X11 o Wayland que trae cualquier escritorio.
+Hace falta Rust estable (1.85 o más nuevo), una tarjeta con Vulkan, DirectX 12 o Metal, y
+las librerías de FFmpeg (4.4 o más nuevo) más clang, que usan los bindings de FFmpeg.
+
+- **Arch:** `sudo pacman -S ffmpeg clang`
+- **Debian / Ubuntu:** `sudo apt install clang pkg-config libasound2-dev libavcodec-dev
+  libavformat-dev libavutil-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev`
+- **Windows:** LLVM (`winget install LLVM.LLVM`) y una compilación **LGPL compartida** de
+  FFmpeg, por ejemplo `ffmpeg-n9.0-…-win64-lgpl-shared-9.0.zip` de
+  [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds/releases). Descomprimirla y, en
+  PowerShell:
+
+  ```
+  $env:FFMPEG_DIR = "C:\ruta\a\ffmpeg-…-lgpl-shared-9.0"
+  $env:LIBCLANG_PATH = "C:\Program Files\LLVM\bin"
+  $env:PATH = "$env:FFMPEG_DIR\bin;$env:PATH"   # las DLL, para ejecutar
+  cargo run -p cinder
+  ```
+
+Para abrir un clip: arrastrarlo a la ventana, Ctrl+O, o `cargo run -p cinder -- clip.mp4`.
 
 ## Documentación
 
