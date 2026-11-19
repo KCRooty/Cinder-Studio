@@ -1,6 +1,6 @@
 //! Salida de audio con cpal y estado compartido con el decodificador.
 //!
-//! El callback de audio no reserva memoria, no bloquea y no hace I/O (AGENTS.md §6): solo
+//! El callback de audio no reserva memoria, no bloquea y no hace I/O (DESARROLLO.md §6): solo
 //! saca muestras de una cola sin bloqueo (rtrb) y actualiza contadores atómicos.
 
 use std::sync::Arc;

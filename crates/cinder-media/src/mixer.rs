@@ -7,7 +7,7 @@
 //! tarde tira lo atrasado y se engancha en su sitio; una programada para dentro de un rato
 //! espera callada. Así los cortes suenan sin hueco y sin desfase.
 //!
-//! El callback no reserva memoria, no bloquea y no hace I/O (AGENTS.md §6): las voces le
+//! El callback no reserva memoria, no bloquea y no hace I/O (DESARROLLO.md §6): las voces le
 //! llegan por una cola y las que ya no sirven vuelven por otra para soltarse fuera de él.
 
 use std::path::{Path, PathBuf};
