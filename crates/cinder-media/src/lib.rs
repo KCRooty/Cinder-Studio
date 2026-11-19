@@ -8,12 +8,14 @@ mod audio;
 mod audio_clip;
 mod decoder;
 mod error;
+mod export;
 mod mixer;
 mod player;
 mod thumb;
 
 pub use audio_clip::peaks;
 pub use error::MediaError;
+pub use export::{ExportPreset, ExportReport, ExportSettings, OutputSize, RenderPlan, RenderSpan, VideoCodec, render};
 pub use mixer::{AudioClipHandle, Mixer};
 pub use player::{MediaInfo, Player, VideoFrame};
 pub use thumb::thumbnail;
