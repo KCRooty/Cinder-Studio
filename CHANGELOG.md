@@ -2,6 +2,52 @@
 
 Qué cambia en cada paso y qué se ha probado. Lo más reciente, arriba.
 
+## 2026-11-19 — Fase 3: Entrega (fin del MVP)
+
+- `cinder-core::deliver`: la línea de tiempo aplanada en tramos. La imagen sale de la pista de
+  vídeo visible más alta, igual que en el visor de programa; los clips cortados con la cuchilla
+  que siguen siendo continuos se leen de un tirón. El sonido es la suma de las pistas de audio
+  sin silenciar.
+- `cinder-media::render`: render fotograma a fotograma, sin pasar por el visor.
+  - Cada fotograma del origen se escala a la salida sin deformarse; si no encaja, con bandas
+    negras. Los huecos salen en negro.
+  - El audio se mezcla por bloques de un fotograma, con las muestras exactas también a
+    29,97 fps, y se codifica en AAC.
+  - El índice va al principio del MP4 (`faststart`).
+  - Codificador: primero x264/x265. Si la compilación de FFmpeg no los trae (las LGPL de
+    Windows no los traen), prueba los de hardware: NVENC, Quick Sync, AMF, VideoToolbox y
+    Media Foundation.
+  - Al cancelar, el archivo a medias se borra.
+- Presets:
+
+  | Preset | Resolución | Códec | Calidad | Audio |
+  |---|---|---|---|---|
+  | YouTube 1080p | 1920×1080 | H.264 | CRF 18 | AAC 320 kb/s |
+  | YouTube 4K | 3840×2160 | H.265 | CRF 20 | AAC 320 kb/s |
+  | TikTok/Shorts | 1080×1920 | H.264 | CRF 20, máximo 60 fps | AAC 192 kb/s |
+  | Máster | la del proyecto | H.265 | CRF 12, `slow` | AAC 320 kb/s |
+
+- Página **Entrega**:
+  - Ajustes: preset, nombre del archivo y carpeta (por defecto, junto al proyecto).
+  - Cola de render:
+    - Cada trabajo guarda una foto de la línea de tiempo, así que se puede seguir editando.
+    - Se renderiza en un hilo aparte, un trabajo detrás de otro, con barra de progreso.
+    - Cada trabajo se puede cancelar o quitar, y los acabados se limpian de golpe.
+    - Nunca pisa un archivo que ya existe: añade «(2)», «(3)»…
+  - Al cerrar la app con un render en marcha, se cancela.
+- Las reglas del proyecto pasan de `AGENTS.md` a `DESARROLLO.md`.
+
+Probado:
+- 59 tests y clippy sin avisos. Entre ellos, render real del clip de prueba en H.264 (con un
+  hueco en medio y audio) y en H.265 vertical; se comprueban la resolución, los códecs, los
+  25 fps y los 3 s exactos del resultado.
+- Fotogramas sacados del resultado: el hueco sale en negro, el segundo tramo empieza en el
+  fotograma 0 del origen y el vertical lleva las bandas. El audio suena donde toca (−24 dB) y
+  calla donde no hay clip (−91 dB).
+- En la app, bajo Xvfb, con un proyecto de 4 s (dos clips con un hueco): tres trabajos
+  seguidos (YouTube 1080p, TikTok y Máster). Los tres acaban con 4,01 s, en 1920×1080 H.264,
+  1080×1920 H.264 y 1920×1080 HEVC, con audio AAC.
+
 ## 2026-11-15 — Fase 2, primer paso: montar en la línea de tiempo
 
 - `cinder-core`: operaciones de montaje que devuelven un cambio entero y deshacible: cuchilla,

@@ -14,9 +14,12 @@ Sustituye a CoalMix Studio (DAW, cancelado el 2026-11-10).
 **Antes de tocar nada:** lee [`DESARROLLO.md`](DESARROLLO.md) (reglas clean-room, no
 negociables).
 
-Estado (2026-11-10): Fase 1 en curso. Ya hay ventana (egui sobre wgpu) con las siete
-páginas y su barra inferior, y el modelo de proyecto con deshacer/rehacer y guardado en
-`.cinder`. Todavía no abre ni reproduce vídeo. Qué se probó, en [`CHANGELOG.md`](CHANGELOG.md).
+Estado (2026-11-19): MVP completo (fases 1–3). Abre clips, los monta en una línea de tiempo
+multipista con los recortes de Resolve, reproduce el programa con su sonido y lo exporta a
+H.264 o H.265 desde la página Entrega, con presets para YouTube, TikTok y máster y una cola de
+render. Qué se probó, en [`CHANGELOG.md`](CHANGELOG.md).
+
+![La página Entrega con tres trabajos en la cola de render](docs/screenshots/02-entrega.png)
 
 ![La ventana de Cinder Studio en la página Color](docs/screenshots/01-shell-color.png)
 

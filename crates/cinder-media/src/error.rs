@@ -12,6 +12,12 @@ pub enum MediaError {
     Ffmpeg(String),
     #[error("audio: {0}")]
     Audio(String),
+    #[error("no se pudo exportar: {0}")]
+    Encode(String),
+    #[error("{0}")]
+    NoEncoder(String),
+    #[error("render cancelado")]
+    Cancelled,
     #[error("el hilo de decodificación no arrancó: {0}")]
     Thread(String),
 }

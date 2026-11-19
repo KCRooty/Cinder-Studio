@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod deliver;
 mod icons;
 mod media_pool;
 mod monitor;
@@ -66,6 +67,7 @@ struct CinderApp {
     dest_audio: usize,
     active: Monitor,
     status: Option<String>,
+    deliver: deliver::Deliver,
 }
 
 /// La tecla física (para que «,» con Mayús siga siendo «,» en cualquier distribución) con
@@ -99,6 +101,7 @@ impl CinderApp {
             dest_audio: 1,
             active: Monitor::Source,
             status: None,
+            deliver: deliver::Deliver::default(),
         };
         // `cinder-studio clip.mp4` (y «Abrir con» del sistema) importa los clips;
         // `cinder-studio proyecto.cinder` abre el proyecto.
@@ -753,6 +756,7 @@ impl CinderApp {
         match self.page {
             Page::Medios => self.medios_page(ui),
             Page::Edicion => self.edicion_page(ui),
+            Page::Entrega => self.deliver.ui(ui, &self.project, self.project_dir.as_deref()),
             other => {
                 egui::CentralPanel::default().frame(theme::flush(theme::BG)).show(ui, |ui| {
                     ui.vertical_centered(|ui| {
@@ -790,6 +794,7 @@ fn page_icon(page: Page) -> Icon {
 impl eframe::App for CinderApp {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.handle_shortcuts(ctx);
+        self.deliver.update(ctx);
         if self.has_viewer() {
             match (self.page, self.active) {
                 (Page::Edicion, Monitor::Program) => self.program.handle_input(ctx, &self.project),
