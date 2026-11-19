@@ -3,6 +3,7 @@
 //! Todo lo que las páginas editan vive aquí: medios, línea de tiempo y ajustes,
 //! con deshacer/rehacer por comandos y guardado en el formato `.cinder`.
 
+pub mod deliver;
 pub mod history;
 pub mod ops;
 pub mod project;
