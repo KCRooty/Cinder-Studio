@@ -80,6 +80,6 @@ No probado aún en Windows ni con una tarjeta real.
 
 ## 2026-11-10 — Fase 0: diseño
 
-- Repo creado con la documentación inicial: `README.md`, `AGENTS.md`, `ASSETS.md`,
+- Repo creado con la documentación inicial: `README.md`, `DESARROLLO.md`, `ASSETS.md`,
   `docs/PAGINAS.md`, `docs/ARQUITECTURA.md` y `docs/ROADMAP.md`.
 - Sin código todavía; nada que probar.

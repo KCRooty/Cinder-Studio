@@ -1,4 +1,4 @@
-//! Iconos dibujados con el pintor de egui. Son propios (AGENTS.md §3): formas simples hechas
+//! Iconos dibujados con el pintor de egui. Son propios (DESARROLLO.md §3): formas simples hechas
 //! a mano, sin fuentes de iconos ni assets de nadie.
 
 use eframe::egui::{self, Color32, Painter, Pos2, Rect, Sense, Shape, Stroke, Vec2};
